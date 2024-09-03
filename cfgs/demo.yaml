@@ -18,7 +18,7 @@ extract_color: True
 filter_invalid_frame: False # True
 
 comple_nonvis: True
-query_frame_num: 3
+query_frame_num: 6
 robust_refine: 2
 BA_iters: 1
 
@@ -38,7 +38,7 @@ max_query_pts: 2048
 dense_depth: False
 
 avg_pose: True
-shared_camera: True # False
+shared_camera: True
 
 save_to_disk: True
 SCENE_DIR: /gemini/data-1/gaussian-splatting-lightning/data/yfpan

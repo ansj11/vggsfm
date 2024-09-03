@@ -63,6 +63,10 @@ def vggsfm_predictions_to_glb(predictions) -> trimesh.Scene:
         np.uint8
     )
     camera_matrices = predictions["extrinsics_opencv"].cpu().numpy()
+    if "aligned_camera_poses" in predictions:
+        aligned_camera_poses = predictions["aligned_camera_poses"].cpu().numpy()
+    else:
+        aligned_camera_poses = None
 
     # Calculate the 5th and 95th percentiles along each axis
     lower_percentile = np.percentile(vertices_3d, 5, axis=0)
@@ -87,16 +91,28 @@ def vggsfm_predictions_to_glb(predictions) -> trimesh.Scene:
     extrinsics_matrices = np.zeros((num_cameras, 4, 4))
     extrinsics_matrices[:, :3, :4] = camera_matrices
     extrinsics_matrices[:, 3, 3] = 1
+    
+    if aligned_camera_poses is not None:
+        aligned_extrinsics_matrices = np.zeros((num_cameras, 4, 4))
+        aligned_extrinsics_matrices[:, :3, :4] = aligned_camera_poses
+        aligned_extrinsics_matrices[:, 3, 3] = 1
 
     # Add camera models to the scene
     for i in range(num_cameras):
         world_to_camera = extrinsics_matrices[i]
+        gt_world_to_camera = aligned_extrinsics_matrices[i] if aligned_camera_poses is not None else world_to_camera
         camera_to_world = np.linalg.inv(world_to_camera)
+        gt_world_to_camera = np.linalg.inv(gt_world_to_camera)
         rgba_color = colormap(i / num_cameras)
         current_color = tuple(int(255 * x) for x in rgba_color[:3])
-
+        # pred_color : red, gt_color : green
+        pred_color = (255, 0, 0)
         integrate_camera_into_scene(
-            scene_3d, camera_to_world, current_color, scene_scale
+            scene_3d, camera_to_world, pred_color, scene_scale
+        )
+        gt_color = (0, 255, 0)
+        integrate_camera_into_scene(
+            scene_3d, gt_world_to_camera, gt_color, scene_scale
         )
 
     # Align scene to the observation of the first camera
