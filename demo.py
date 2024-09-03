@@ -12,6 +12,7 @@ from omegaconf import DictConfig, OmegaConf
 from vggsfm.runners.runner import VGGSfMRunner
 from vggsfm.datasets.demo_loader import DemoLoader
 from vggsfm.utils.utils import seed_all_random_engines
+from pdb import set_trace
 
 
 @hydra.main(config_path="cfgs/", config_name="demo")

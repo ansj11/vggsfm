@@ -153,8 +153,8 @@ def integrate_camera_into_scene(
         scene_scale (float): Scale of the scene.
     """
 
-    cam_width = scene_scale * 0.05
-    cam_height = scene_scale * 0.1
+    cam_width = scene_scale * 0.1
+    cam_height = scene_scale * 0.2
 
     # Create cone shape for camera
     rot_45_degree = np.eye(4)

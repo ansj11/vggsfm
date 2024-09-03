@@ -15,7 +15,7 @@ debug: False
 center_order: False
 mixed_precision: fp16
 extract_color: True
-filter_invalid_frame: True
+filter_invalid_frame: False # True
 
 comple_nonvis: True
 query_frame_num: 3
@@ -28,7 +28,7 @@ camera_type: "SIMPLE_PINHOLE"   # optional: ["SIMPLE_PINHOLE", "SIMPLE_RADIAL"]
 
 load_gt: False
 viz_visualize: False
-gr_visualize: False
+gr_visualize: True
 
 fmat_thres: 4.0
 max_reproj_error: 4.0
@@ -38,10 +38,10 @@ max_query_pts: 2048
 dense_depth: False
 
 avg_pose: True
-shared_camera: False
+shared_camera: True # False
 
 save_to_disk: True
-SCENE_DIR: examples/kitchen
+SCENE_DIR: /gemini/data-1/gaussian-splatting-lightning/data/yfpan
 
 resume_ckpt:  ckpt/vggsfm_v2_0_0.bin
 auto_download_ckpt: True
@@ -52,15 +52,15 @@ use_poselib: True
 
 shift_point2d_to_original_res: False
 
-make_reproj_video: False
+make_reproj_video: True # False
 
-visual_tracks: False
+visual_tracks: True # False
 visual_query_points: False
 visual_dense_point_cloud: False
 
 
 query_by_midpoint: False
-query_by_interval: False
+query_by_interval: True # False
 
 
 MODEL:
