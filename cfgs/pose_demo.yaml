@@ -9,6 +9,8 @@ relocalization_method: "align_gt" # or "fix_pose_full" or "fix_pose_BA" (not sup
 use_mask: True
 recursive: True
 
+ref_num: 16
+
 seed: 0
 img_size: 1024
 
@@ -34,9 +36,9 @@ load_gt: False
 viz_visualize: False
 gr_visualize: False
 
-fmat_thres: 4.0
-max_reproj_error: 4.0
-init_max_reproj_error: 4.0
+fmat_thres: 10.0
+max_reproj_error: 10.0
+init_max_reproj_error: 10.0
 max_query_pts: 2048
 
 dense_depth: False
@@ -45,21 +47,21 @@ avg_pose: True
 shared_camera: True
 
 save_to_disk: True
-SCENE_DIR: datasets/dazhong
+SCENE_DIR: examples/kitchen
 
 resume_ckpt:  ckpt/vggsfm_v2_0_0.bin
 auto_download_ckpt: True
 
 query_method: "aliked"
 
-use_poselib: True
+use_poselib: False
 
 shift_point2d_to_original_res: False
 
-make_reproj_video: True
+make_reproj_video: False
 
 visual_tracks: True
-visual_query_points: True
+visual_query_points: False
 visual_dense_point_cloud: False
 
 

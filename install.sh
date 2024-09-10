@@ -9,7 +9,7 @@
 conda deactivate
 
 # Set environment variables
-export ENV_NAME=vggsfm_tmp
+export ENV_NAME=vggsfm
 export PYTHON_VERSION=3.10
 export PYTORCH_VERSION=2.1.0
 export CUDA_VERSION=12.1
@@ -25,7 +25,7 @@ conda install pytorch3d=0.7.5 -c pytorch3d
 
 # Install pip packages
 pip install hydra-core --upgrade
-pip install omegaconf opencv-python einops visdom tqdm scipy plotly scikit-learn imageio[ffmpeg] gradio trimesh huggingface_hub
+pip install omegaconf opencv-python einops visdom tqdm scipy plotly scikit-learn imageio[ffmpeg] gradio trimesh huggingface_hub loguru
 
 # Install LightGlue
 git clone https://github.com/jytime/LightGlue.git dependency/LightGlue

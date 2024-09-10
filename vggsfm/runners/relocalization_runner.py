@@ -46,7 +46,7 @@ from .runner import (
 
 from loguru import logger
 from vggsfm.utils.align import align_camera_extrinsics, apply_transformation
-from vggsfm.utils.metric import rotation_angle, translation_angle
+from vggsfm.utils.metric import rotation_angle, translation_angle, translation_meters, add_metric, projection_2d_error
 
 # Optional imports
 try:
@@ -95,6 +95,7 @@ class RelocalizationRunner(VGGSfMRunner):
         gt_poses=None,
         gt_depths=None,
         query_poses=None,
+        model_path=None,
     ):
         supported_methods = ["align_gt"]
         
@@ -102,6 +103,7 @@ class RelocalizationRunner(VGGSfMRunner):
         self.gt_poses = gt_poses
         self.gt_depths = gt_depths
         self.query_poses = query_poses
+        self.model_path = model_path
         
         if self.relocalization_method not in supported_methods:
             raise ValueError(
@@ -230,19 +232,51 @@ class RelocalizationRunner(VGGSfMRunner):
                     self.gt_poses[-1][:3, :3].unsqueeze(0),
                     predictions["extrinsics_opencv"][-1][:3, :3].unsqueeze(0),
                 )
-                err_t = translation_angle(
+                err_t_degree = translation_angle(
                     self.gt_poses[-1][:3, 3].unsqueeze(0),
                     predictions["extrinsics_opencv"][-1][:3, 3].unsqueeze(0),
+                )
+                
+                err_t = translation_meters(
+                    self.gt_poses[-1][:3, 3].unsqueeze(0),
+                    predictions["extrinsics_opencv"][-1][:3, 3].unsqueeze(0),
+                    input_unit="m",
                 )
                 
                 logger.info(f"query frame rotation error: {err_R}")
                 logger.info(f"query frame translation error: {err_t}")
                 
+                if self.model_path is not None:
+                    # calucate the add0.1d and proj2d error
+                    ADD = add_metric(
+                        self.model_path,
+                        predictions["extrinsics_opencv"][-1].unsqueeze(0).cpu().numpy(),
+                        self.gt_poses[-1].unsqueeze(0).cpu().numpy())
+                    
+                    
+                    proj2d = projection_2d_error(
+                        self.model_path,
+                        predictions["extrinsics_opencv"][-1].unsqueeze(0).cpu().numpy(),
+                        self.gt_poses[-1].unsqueeze(0).cpu().numpy())
+                else:
+                    ADD = None
+                    proj2d = None
+                    
+                        
+                
                 # save error to output_dir if provided
                 if output_dir is not None:
-                    with open(os.path.join(output_dir, "error.txt"), "w") as f:
-                        f.write(f"query frame rotation error: {err_R}\n")
-                        f.write(f"query frame translation error: {err_t}\n")
+                    # save metrcis as json
+                    metrics = {
+                        "rotation_error": err_R.item(),
+                        "translation_error_degree": err_t_degree.item(),
+                        "translation_error_meter": err_t.item(),
+                        "add": ADD,
+                        "proj2d": proj2d,
+                    }
+                    import json
+                    with open(os.path.join(output_dir, "metrics.json"), "w") as f:
+                        json.dump(metrics, f)
             
             predictions["points3D"] = self.transform_points(
                 predictions["points3D"],
@@ -250,6 +284,8 @@ class RelocalizationRunner(VGGSfMRunner):
                 align_t_T,
                 align_t_s,
             )
+            
+            predictions['metrics'] = metrics
             
             
         else:

@@ -217,6 +217,28 @@ def calculate_auc(r_error, t_error, max_threshold=30, return_list=False):
     # Compute and return the cumulative sum of the normalized histogram
     return torch.cumsum(normalized_histogram, dim=0).mean()
 
+def calculate_auc_single_np(error, max_threshold=30):
+    """
+    Calculate the Area Under the Curve (AUC) for the given error array.
+
+    :param error: numpy array representing error values (Degree).
+    :param max_threshold: maximum threshold value for binning the histogram.
+    :return: cumulative sum of normalized histogram of error values.
+    """
+
+    # Define histogram bins
+    bins = np.arange(max_threshold + 1)
+
+    # Calculate histogram of error values
+    histogram, _ = np.histogram(error, bins=bins)
+
+    # Normalize the histogram
+    num_pairs = float(len(error))
+    normalized_histogram = histogram.astype(float) / num_pairs
+
+    # Compute and return the cumulative sum of the normalized histogram
+    return np.mean(np.cumsum(normalized_histogram)), normalized_histogram
+
 
 def batched_all_pairs(B, N):
     # B, N = se3.shape[:2]
@@ -331,6 +353,24 @@ def translation_angle(tvec_gt, tvec_pred, batch_size=None, ambiguity=True):
 
     return rel_tangle_deg
 
+def translation_meters(tvec_gt, tvec_pred, batch_size=None, input_unit="m"):
+    
+    tvec_diff = tvec_gt - tvec_pred
+    if input_unit == "mm":
+        tvec_diff = tvec_diff * 1e-3
+    elif input_unit == "cm":
+        tvec_diff = tvec_diff * 1e-2
+    elif input_unit == "dm":
+        tvec_diff = tvec_diff * 1e-1
+    elif input_unit == "m":
+        pass
+    else:
+        raise ValueError(f"Invalid input unit {input_unit}")
+    
+    tvec_diff_norm = torch.norm(tvec_diff, dim=1)
+    return tvec_diff_norm
+    
+
 
 def compare_translation_by_angle(t_gt, t, eps=1e-15, default_err=1e6):
     """Normalize the translation vectors and compute the angle between them."""
@@ -345,3 +385,126 @@ def compare_translation_by_angle(t_gt, t, eps=1e-15, default_err=1e6):
 
     err_t[torch.isnan(err_t) | torch.isinf(err_t)] = default_err
     return err_t
+
+
+from plyfile import PlyData
+
+def get_all_points_on_model(cad_model_path):
+    ply = PlyData.read(cad_model_path)
+    data = ply.elements[0].data
+    x = data['x']
+    y = data['y']
+    z = data['z']
+    model = np.stack([x, y, z], axis=-1)
+    return model
+
+def projection_2d_error(model_path,pose_preds, pose_gts,t_scale='m'):
+    def project(xyz, K, RT):
+        """
+        NOTE: need to use original K
+        xyz: [N, 3]
+        K: [3, 3]
+        RT: [3, 4]
+        """
+        xyz = np.dot(xyz, RT[:, :3].T) + RT[:, 3:].T
+        xyz = np.dot(xyz, K.T)
+        xy = xyz[:, :2] / xyz[:, 2:]
+        return xy
+    
+    ret = []
+    
+        
+    for bs in range(len(pose_preds)):
+        model_3D_pts = get_all_points_on_model(model_path)
+        pose_targets = pose_gts[bs]
+        pose_pred = pose_preds[bs]
+        K = np.array([[572.4114, 0, 325.2611], [0, 573.57043, 242.04899], [0, 0, 1]])
+        
+        # Dim check:
+        if pose_pred.shape[0] == 4:
+            pose_pred = pose_pred[:3]
+        if pose_targets.shape[0] == 4:
+            pose_targets = pose_targets[:3]
+
+        if t_scale == 'mm':
+            model_3D_pts /= 10
+            pose_pred[:,3] /= 10
+            pose_targets[:,3] /= 10
+        elif t_scale == 'cm':
+            pass
+        elif t_scale == 'm':
+            model_3D_pts *= 100
+            pose_pred[:,3] *= 100
+            pose_targets[:,3] *= 100
+            
+        
+        model_2d_pred = project(model_3D_pts, K, pose_pred) # pose_pred: 3*4
+        model_2d_targets = project(model_3D_pts, K, pose_targets)
+        proj_mean_diff = np.mean(np.linalg.norm(model_2d_pred - model_2d_targets, axis=-1))
+        ret.append(proj_mean_diff)
+        
+    return np.array(ret) if len(ret) > 1 else ret[0]
+        
+    
+def add_metric(model_path, pose_preds, pose_gts, diameter=None, t_scale='m', percentage=0.1):
+    syn=False
+    model_unit=t_scale
+
+    ret = []
+    for bs in range(len(pose_preds)):
+        model_3D_pts = get_all_points_on_model(model_path)
+        max_model_coord = np.max(model_3D_pts, axis=0)
+        min_model_coord = np.min(model_3D_pts, axis=0)
+        diameter_from_model = np.linalg.norm(max_model_coord - min_model_coord)
+        if diameter is None:
+            diameter = diameter_from_model
+            
+        pose_target = pose_gts[bs]
+        pose_pred = pose_preds[bs]
+    
+        # Dim check:
+        if pose_pred.shape[0] == 4:
+            pose_pred = pose_pred[:3]
+        if pose_target.shape[0] == 4:
+            pose_target = pose_target[:3]
+        
+        if model_unit == 'mm':
+            model_3D_pts /= 10
+            diameter /= 10
+            pose_pred[:,3] /= 10
+            pose_target[:,3] /= 10
+            max_model_coord = np.max(model_3D_pts, axis=0)
+            min_model_coord = np.min(model_3D_pts, axis=0)
+            diameter_from_model = np.linalg.norm(max_model_coord - min_model_coord)
+            
+        elif model_unit == 'cm':
+            pass
+        elif model_unit == 'm':
+            model_3D_pts *= 100
+            diameter *= 100
+            pose_pred[:,3] *= 100
+            pose_target[:,3] *= 100
+            
+            max_model_coord = np.max(model_3D_pts, axis=0)
+            min_model_coord = np.min(model_3D_pts, axis=0)
+            diameter_from_model = np.linalg.norm(max_model_coord - min_model_coord)
+
+        diameter_thres = diameter * percentage
+        model_pred = np.dot(model_3D_pts, pose_pred[:, :3].T) + pose_pred[:, 3]
+        model_target = np.dot(model_3D_pts, pose_target[:, :3].T) + pose_target[:, 3]
+        
+        if syn:
+            from scipy import spatial
+            mean_dist_index = spatial.cKDTree(model_pred)
+            mean_dist, _ = mean_dist_index.query(model_target, k=1)
+            mean_dist = np.mean(mean_dist)
+        else:
+            mean_dist = np.mean(np.linalg.norm(model_pred - model_target, axis=-1))
+        
+
+        if mean_dist < diameter_thres:
+            ret.append(1.0)
+        else:
+            ret.append(0.0)
+            
+    return np.array(ret) if len(ret) > 1 else ret[0]

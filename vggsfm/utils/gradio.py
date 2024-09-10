@@ -1,16 +1,13 @@
-try:
-    import os
-    import trimesh
-    import gradio as gr
-    import numpy as np
-    import matplotlib
-    from scipy.spatial.transform import Rotation
 
-    print("Successfully imported the packages for Gradio visualization")
-except:
-    print(
-        f"Failed to import packages for Gradio visualization. Please disable gradio visualization"
-    )
+import os
+import trimesh
+import gradio as gr
+import numpy as np
+import matplotlib
+from scipy.spatial.transform import Rotation
+
+print("Successfully imported the packages for Gradio visualization")
+
 
 
 def visualize_by_gradio(glbfile):
