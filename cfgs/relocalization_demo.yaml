@@ -44,7 +44,7 @@ avg_pose: True
 shared_camera: True
 
 save_to_disk: True
-SCENE_DIR: examples/kitchen
+SCENE_DIR: datasets/dazhong
 
 resume_ckpt:  ckpt/vggsfm_v2_0_0.bin
 auto_download_ckpt: True

@@ -68,6 +68,8 @@ try:
 except Exception as e:
     print("PyTorch3d is not available. Please disable visdom.") 
     #raise e
+from pdb import set_trace
+
 
 class RelocalizationRunner(VGGSfMRunner):
     def __init__(self, cfg):
@@ -117,10 +119,10 @@ class RelocalizationRunner(VGGSfMRunner):
             masks = move_to_device(masks, self.device)
             crop_params = move_to_device(crop_params, self.device)
             self.gt_poses = move_to_device(self.gt_poses, self.device)
-            self.gt_depths = move_to_device(self.gt_depths, self.device)
-            self.query_poses = move_to_device(self.query_poses, self.device)
+            self.gt_depths = move_to_device(self.gt_depths, self.device)    # None
+            self.query_poses = move_to_device(self.query_poses, self.device)    # None
             
-
+            
             # Add batch dimension if necessary
             if len(images.shape) == 4:
                 images = add_batch_dimension(images)
@@ -128,7 +130,7 @@ class RelocalizationRunner(VGGSfMRunner):
                 crop_params = add_batch_dimension(crop_params)
 
             if query_frame_num is None:
-                query_frame_num = self.cfg.query_frame_num
+                query_frame_num = self.cfg.query_frame_num  # 3
 
             # Perform sparse reconstruction
             predictions = self.sparse_reconstruct(
@@ -142,13 +144,13 @@ class RelocalizationRunner(VGGSfMRunner):
             )
 
             # Save the sparse reconstruction results
-            if self.cfg.save_to_disk:
+            if self.cfg.save_to_disk:   # True
                 self.save_sparse_reconstruction(
                     predictions, seq_name, output_dir
                 )
 
             # Extract sparse depth and point information if needed for further processing
-            if self.cfg.dense_depth or self.cfg.make_reproj_video:
+            if self.cfg.dense_depth or self.cfg.make_reproj_video:  # False True
                 predictions = (
                     self.extract_sparse_depth_and_point_from_reconstruction(
                         predictions
@@ -204,7 +206,7 @@ class RelocalizationRunner(VGGSfMRunner):
             # last image as query
             # select frame besides the last one
             if predictions["extrinsics_opencv"].shape[0] == self.gt_poses.shape[0]:
-                gt_pose = self.gt_poses[:-1]
+                gt_pose = self.gt_poses[:-1]    # n-1
             else:
                 gt_pose = self.gt_poses
             
@@ -219,9 +221,9 @@ class RelocalizationRunner(VGGSfMRunner):
             # only calulate the last frame error
             predictions["extrinsics_opencv"] = apply_transformation(
                 predictions["extrinsics_opencv"],
-                align_t_R,
-                align_t_T,
-                align_t_s,
+                align_t_R,  # 1x3x3
+                align_t_T,  # 1x3
+                align_t_s,  # 1.937
             )
             if predictions["extrinsics_opencv"].shape[0] == self.gt_poses.shape[0]:
                 err_R = rotation_angle(
@@ -253,7 +255,8 @@ class RelocalizationRunner(VGGSfMRunner):
         else:
             logger.warning("No ground truth camera poses provided")
             
-        
+        np.savetxt(os.path.join(output_dir, "align_pose.txt"), predictions['extrinsics_opencv'][-1].cpu().numpy())
+        np.savetxt(os.path.join(output_dir, "intrinsics.txt"), predictions['intrinsics_opencv'][-1].cpu().numpy())
         return predictions
     
     

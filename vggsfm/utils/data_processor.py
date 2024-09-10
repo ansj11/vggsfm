@@ -4,8 +4,19 @@ import tqdm
 import os
 import shutil
 import cv2
-import tqdm
+import torch
+import numpy as np
+from PIL import Image
 from loguru import logger
+from torchvision import transforms
+from transformers import AutoModelForImageSegmentation
+try:
+    from read_write_model import read_model, qvec2rotmat
+except:
+    from vggsfm.utils.read_write_model import read_model, qvec2rotmat
+
+from pdb import set_trace
+
 
 class Processor:
     '''
@@ -48,7 +59,7 @@ class Processor:
         self._ensure_directory_exists(os.path.dirname(mask_output_path))
         
         mask = cv2.imread(mask_file, cv2.IMREAD_GRAYSCALE)
-        mask[mask > 0] = 255
+        mask[mask > 127] = 255
         mask = cv2.bitwise_not(mask)
         cv2.imwrite(mask_output_path, mask)
 
@@ -435,15 +446,146 @@ class LINEMODProcessor(Processor):
         cv2.imwrite(mask_output_path, mask)
         
     
+
+class CarProcessor(Processor):
+    '''
+        Process data for compatibility with the Car dataset
+    '''
+    
+    def __init__(self, data_path, output_path, length=None, stride=1):
+        '''
+            Initialize the Car Processor
+        '''
+        
+        super().__init__(data_path, output_path)
+                
+        self.data_path = data_path
+        
+        self.rgb_path = None
+        self.mask_path = None
+        self.pose_path = None
+        self.intrinsics_path = None
+        
+        self.dataset_name = 'Car'
+        
+        self.length = length
+        self.stride = stride
+        
+        self.metadata = []
+        
+        self.birefnet = AutoModelForImageSegmentation.from_pretrained('zhengpeng7/BiRefNet', trust_remote_code=True)
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        torch.set_float32_matmul_precision(['high', 'highest'][0])
+
+        self.birefnet.to(self.device)
+        self.birefnet.eval()
+        print('BiRefNet is ready to use.')
+        self.transform_image = transforms.Compose([
+            transforms.Resize((1024, 1024)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ])
+        # parse annotations 
+        self._parse_annotations()
+        
+    
+    def _parse_annotations(self):
+        '''
+            Parse the colmap annotations
+        '''
+        sparse_path = os.path.join(self.data_path, 'sparse/0')
+        if not os.path.exists(sparse_path):
+            loguru.logger.info(f'Directory {sparse_path} not exists...')
+        
+        cameras, images, points3D = read_model(sparse_path, '.txt')
+        
+        self.metadata = []
+        for idx, key in enumerate(images):
+            extr = images[key]
+            intr = cameras[extr.camera_id]
+            height = intr.height
+            width = intr.width
+            
+            R = qvec2rotmat(extr.qvec)
+            T = np.array(extr.tvec)
+            pose = np.eye(4)
+            pose[:3,:3] = R
+            pose[:3, 3] = T
+            if intr.model in ["SIMPLE_PINHOLE", "SIMPLE_RADIAL"]:
+                fx = fy = intr.params[0]
+                cx, cy = intr.params[1:3]
+            elif intr.model=="PINHOLE":
+                fx, fy, cx, cy = intr.params[0:4]
+            else:
+                raise ValueError(f"Unsupported camera model: {intr.model}")
+
+            intrinsics = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
+            
+            image_path = os.path.join(self.data_path, 'images', os.path.basename(extr.name))
+            mask_path = image_path.replace('images','masks')
+            image = cv2.imread(image_path, -1)
+            if not os.path.exists(mask_path):
+                if image.shape[-1] == 4:
+                    os.makedirs(os.path.dirname(mask_path), exist_ok=True)
+                    cv2.imwrite(mask_path, (image[..., 3] > 0).astype(np.uint8) * 255)
+                else:
+                    self.predict_mask(image, mask_path)
+                    
+            dic = {'extrinsics': pose, 'intrinsics': intrinsics, 'height': height, 'width': width, 
+                   'image': image_path, 'mask': mask_path}
+            self.metadata.append(dic)
+        
+        loguru.logger.info(f'Loaded {len(self.metadata[1])} frames')
+    
+    def predict_mask(self, image_np, mask_path):
+        image = Image.fromarray(image_np)
+        input_images = self.transform_image(image).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            preds = self.birefnet(input_images)[-1].sigmoid().cpu()
+        pred = preds[0].squeeze()
+        pred_pil = transforms.ToPILImage()(pred)
+        os.makedirs(os.path.dirname(mask_path), exist_ok=True)
+        pred_pil.resize(image.size).save(mask_path)
         
         
+    def _load_rgb_files(self):
+        '''
+            Load the RGB files (path)
+        '''   
+        return [f['image'] for f in self.metadata]
+    
+    def _load_mask_files(self):
+        '''
+            Load the mask files (path)
+        '''
+        return [f['mask'] for f in self.metadata]
+    
+    def _load_poses(self):
+        '''
+            Load the poses (R, T) 
+            CO3D camera pose coordinate system follows the Pytorch3D standard
+        '''
+        
+        return [f['extrinsics'] for f in self.metadata]
+    
+    def _load_intrinsics(self):
+        """
+        Load the intrinsics.
+        """
+        
+        return [f['intrinsics'] for f in self.metadata]
 
 
 def main():
-    data_path = '/home/SSD2T/yyh/dataset/co3d_test_raw'
-    output_path = '/home/yyh/lab/vggsfm/data/co3d_test'
-    
-    processor = CO3DProcessor(data_path, output_path, length=None, stride=5, sequence_name='117_13765_29509', catogoery='baseballglove')
+    # data_path = '/home/SSD2T/yyh/dataset/co3d_test_raw'
+    # output_path = '/home/yyh/lab/vggsfm/data/co3d_test'
+    # data_path = '/gemini/data-1/vggsfm/datasets/carV8'
+    # output_path = '/gemini/data-1/vggsfm/datasets/car_test'
+    data_path = '/gemini/data-2/qczj/sfm/大众-朗逸_2017款-1.6L-自动舒适版/雅致白/'
+    output_path = '/gemini/data-1/vggsfm/datasets/dazhong'
+        
+    processor = CarProcessor(data_path, output_path, length=None, stride=1)
     processor.process()
     
 if __name__ == '__main__':
